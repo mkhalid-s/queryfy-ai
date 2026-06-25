@@ -91,11 +91,10 @@ export const analyzeResults = (results) => {
   let totalNestedDepth = 0
   let arrayColumnCount = 0
   let hasVaryingSchema = false
-  let hasNoSqlIdField = false
   let hasNoSqlIdPattern = false
 
   // Check for NoSQL ID fields in column names
-  hasNoSqlIdField = columns.some(col => NOSQL_ID_FIELDS.includes(col))
+  const hasNoSqlIdField = columns.some(col => NOSQL_ID_FIELDS.includes(col))
 
   // Check each column for nested structures and NoSQL patterns
   const columnAnalysis = {}

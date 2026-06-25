@@ -371,7 +371,7 @@ export default {
       } catch (error) {
         if (error.name === 'AbortError') {
           // External abort (user cancellation or outer timeout) — do not retry.
-          throw new Error('Chat request timed out')
+          throw new Error('Chat request timed out', { cause: error })
         }
         // Re-classify network-level fetch failures as retry-worthy.
         // (TypeError with 'Failed to fetch' is the Chrome/Firefox signal
