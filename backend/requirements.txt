@@ -11,7 +11,7 @@ httpx>=0.26.0
 
 # Database Drivers - Core (Async)
 asyncpg>=0.29.0           # PostgreSQL async
-aiomysql>=0.2.0           # MySQL async
+aiomysql>=0.3.2           # MySQL async
 motor>=3.7.1              # MongoDB async
 pymongo>=4.6.1            # MongoDB sync
 
