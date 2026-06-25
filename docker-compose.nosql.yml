@@ -1,0 +1,145 @@
+# ============================================================================
+# QueryfyAI - NoSQL Testing Docker Compose (Cassandra + DynamoDB Local)
+# ============================================================================
+# Usage:
+#   docker compose -f docker-compose.nosql.yml up -d
+#
+# Or with the main dev compose file:
+#   docker compose -f docker-compose.dev.yml -f docker-compose.nosql.yml up -d
+#
+# Connection URLs:
+#   Cassandra: cassandra://localhost:9042/banking_db
+#   DynamoDB:  dynamodb://localhost:4566/
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # APACHE CASSANDRA - Wide-column NoSQL Database
+  # ============================================================================
+  cassandra:
+    image: cassandra:4.1
+    container_name: queryfyai-cassandra
+    ports:
+      - "9042:9042"    # CQL native transport
+      - "7000:7000"    # Internode communication
+      - "9160:9160"    # Thrift client API (legacy)
+    environment:
+      - CASSANDRA_CLUSTER_NAME=QueryfyAI_Test_Cluster
+      - CASSANDRA_DC=datacenter1
+      - CASSANDRA_RACK=rack1
+      - CASSANDRA_ENDPOINT_SNITCH=GossipingPropertyFileSnitch
+      # Memory settings for local development
+      - MAX_HEAP_SIZE=512M
+      - HEAP_NEWSIZE=100M
+    volumes:
+      - cassandra_data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'describe cluster'"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 60s  # Cassandra takes time to start
+    restart: unless-stopped
+    networks:
+      - queryfyai-network
+
+  # ============================================================================
+  # CASSANDRA INIT - Runs CQL scripts after Cassandra is ready
+  # ============================================================================
+  cassandra-init:
+    image: cassandra:4.1
+    container_name: queryfyai-cassandra-init
+    depends_on:
+      cassandra:
+        condition: service_healthy
+    volumes:
+      - ./data/cassandra-init:/docker-entrypoint-initdb.d:ro
+    entrypoint: ["/docker-entrypoint-initdb.d/init-cassandra.sh"]
+    environment:
+      - CASSANDRA_HOST=cassandra
+      - CASSANDRA_PORT=9042
+    networks:
+      - queryfyai-network
+    restart: "no"
+
+  # ============================================================================
+  # AMAZON DYNAMODB LOCAL - Document/Key-Value NoSQL Database
+  # ============================================================================
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    container_name: queryfyai-dynamodb
+    ports:
+      - "4566:8000"
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    # Use persistent storage instead of in-memory:
+    # command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /data"
+    # volumes:
+    #   - dynamodb_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/shell/ || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - queryfyai-network
+
+  # ============================================================================
+  # DYNAMODB INIT - Runs initialization scripts after DynamoDB is ready
+  # ============================================================================
+  dynamodb-init:
+    image: amazon/aws-cli:latest
+    container_name: queryfyai-dynamodb-init
+    depends_on:
+      dynamodb:
+        condition: service_healthy
+    volumes:
+      - ./data/dynamodb-init:/scripts:ro
+    entrypoint: ["/bin/bash", "/scripts/01-init-logistics.sh"]
+    environment:
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
+      - AWS_DEFAULT_REGION=us-east-1
+      - DYNAMODB_ENDPOINT=http://dynamodb:8000
+    networks:
+      - queryfyai-network
+    restart: "no"
+
+  # ============================================================================
+  # DYNAMODB ADMIN UI (Optional - for debugging)
+  # ============================================================================
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: queryfyai-dynamodb-admin
+    ports:
+      - "8001:8001"
+    environment:
+      - DYNAMO_ENDPOINT=http://dynamodb:8000
+      - AWS_REGION=local
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
+    depends_on:
+      - dynamodb
+    restart: unless-stopped
+    networks:
+      - queryfyai-network
+
+# ============================================================================
+# NETWORKS
+# ============================================================================
+networks:
+  queryfyai-network:
+    driver: bridge
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+volumes:
+  cassandra_data:
+    driver: local
+  # Uncomment for persistent DynamoDB storage
+  # dynamodb_data:
+  #   driver: local

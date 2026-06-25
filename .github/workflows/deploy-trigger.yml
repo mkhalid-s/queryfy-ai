@@ -1,0 +1,47 @@
+name: Deploy Trigger
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Deployment environment
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      version:
+        description: Version or image tag to deploy
+        required: true
+        default: latest
+      confirm:
+        description: Type "deploy" to confirm
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  validate:
+    name: Validate Deployment Request
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Validate confirmation
+        if: github.event.inputs.confirm != 'deploy'
+        run: |
+          echo "Deployment not confirmed. Type 'deploy' to confirm."
+          exit 1
+
+      - name: Show deployment plan
+        run: |
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Version: ${{ github.event.inputs.version }}"
+          echo "Backend image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:${{ github.event.inputs.version }}"
+          echo "Frontend image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:${{ github.event.inputs.version }}"
+          echo "This public workflow only validates the request. Wire your own deployment webhook or cluster credentials separately."

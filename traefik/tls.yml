@@ -1,0 +1,38 @@
+# ==========================================
+# Traefik TLS Configuration
+# ==========================================
+# For custom SSL certificates, place your cert files in this directory
+# and update the paths below.
+#
+# For Let's Encrypt, uncomment the ACME configuration in docker-compose.production.yml
+# ==========================================
+
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
+      sniStrict: true
+      cipherSuites:
+        - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+        - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+        - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305
+        - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
+
+    modern:
+      minVersion: VersionTLS13
+
+  # Uncomment and configure for custom certificates
+  # certificates:
+  #   - certFile: /etc/traefik/certs/cert.pem
+  #     keyFile: /etc/traefik/certs/key.pem
+  #     stores:
+  #       - default
+
+  stores:
+    default:
+      defaultCertificate:
+        # Optional: specify default certificate
+        # certFile: /etc/traefik/certs/default-cert.pem
+        # keyFile: /etc/traefik/certs/default-key.pem

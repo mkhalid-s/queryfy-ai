@@ -1,0 +1,433 @@
+# ============================================================================
+# QueryfyAI - Kubernetes Monitoring Configuration
+# ============================================================================
+# Includes: ServiceMonitor, PrometheusRule, Grafana Dashboard ConfigMap
+# Requires: Prometheus Operator installed in cluster
+# ============================================================================
+
+---
+# ============================================================================
+# SERVICE MONITOR - Backend Metrics
+# ============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: queryfyai-backend-monitor
+  labels:
+    app: queryfyai
+    component: backend
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: queryfyai
+      component: backend
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s
+  namespaceSelector:
+    matchNames:
+    - queryfyai
+
+---
+# ============================================================================
+# PROMETHEUS RULES - Alerting Rules
+# ============================================================================
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: queryfyai-alerts
+  labels:
+    app: queryfyai
+    release: prometheus
+spec:
+  groups:
+  - name: queryfyai.rules
+    rules:
+    # High Error Rate Alert
+    - alert: QueryfyAIHighErrorRate
+      expr: |
+        (
+          sum(rate(http_requests_total{service="queryfyai-backend",status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{service="queryfyai-backend"}[5m]))
+        ) > 0.05
+      for: 5m
+      labels:
+        severity: critical
+        service: queryfyai
+      annotations:
+        summary: "High error rate detected in QueryfyAI"
+        description: "Error rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+
+    # High Latency Alert
+    - alert: QueryfyAIHighLatency
+      expr: |
+        histogram_quantile(0.95,
+          sum(rate(http_request_duration_seconds_bucket{service="queryfyai-backend"}[5m])) by (le)
+        ) > 5
+      for: 10m
+      labels:
+        severity: warning
+        service: queryfyai
+      annotations:
+        summary: "High latency detected in QueryfyAI"
+        description: "95th percentile latency is {{ $value | humanizeDuration }}"
+
+    # Pod Not Ready Alert
+    - alert: QueryfyAIPodNotReady
+      expr: |
+        kube_deployment_status_replicas_ready{deployment="queryfyai-backend"}
+        <
+        kube_deployment_spec_replicas{deployment="queryfyai-backend"}
+      for: 5m
+      labels:
+        severity: warning
+        service: queryfyai
+      annotations:
+        summary: "QueryfyAI pods not ready"
+        description: "{{ $value }} pods are not ready"
+
+    # High Memory Usage Alert
+    - alert: QueryfyAIHighMemoryUsage
+      expr: |
+        (
+          container_memory_working_set_bytes{container="backend",pod=~"queryfyai-backend.*"}
+          /
+          container_spec_memory_limit_bytes{container="backend",pod=~"queryfyai-backend.*"}
+        ) > 0.85
+      for: 10m
+      labels:
+        severity: warning
+        service: queryfyai
+      annotations:
+        summary: "High memory usage in QueryfyAI"
+        description: "Memory usage is {{ $value | humanizePercentage }}"
+
+    # High CPU Usage Alert
+    - alert: QueryfyAIHighCPUUsage
+      expr: |
+        (
+          sum(rate(container_cpu_usage_seconds_total{container="backend",pod=~"queryfyai-backend.*"}[5m]))
+          /
+          sum(container_spec_cpu_quota{container="backend",pod=~"queryfyai-backend.*"} / 100000)
+        ) > 0.85
+      for: 10m
+      labels:
+        severity: warning
+        service: queryfyai
+      annotations:
+        summary: "High CPU usage in QueryfyAI"
+        description: "CPU usage is {{ $value | humanizePercentage }}"
+
+    # Redis Connection Failure
+    - alert: QueryfyAIRedisDown
+      expr: redis_up{service="redis"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        service: queryfyai
+      annotations:
+        summary: "Redis is down"
+        description: "Redis service is not responding"
+
+    # PostgreSQL Connection Failure
+    - alert: QueryfyAIPostgresDown
+      expr: pg_up{service="postgres"} == 0
+      for: 2m
+      labels:
+        severity: critical
+        service: queryfyai
+      annotations:
+        summary: "PostgreSQL is down"
+        description: "PostgreSQL service is not responding"
+
+    # LLM API Latency
+    - alert: QueryfyAILLMHighLatency
+      expr: |
+        histogram_quantile(0.95,
+          sum(rate(llm_request_duration_seconds_bucket{service="queryfyai-backend"}[5m])) by (le)
+        ) > 30
+      for: 5m
+      labels:
+        severity: warning
+        service: queryfyai
+      annotations:
+        summary: "LLM API high latency"
+        description: "LLM API 95th percentile latency is {{ $value | humanizeDuration }}"
+
+---
+# ============================================================================
+# CONFIGMAP - Grafana Dashboard
+# ============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: queryfyai-grafana-dashboard
+  labels:
+    app: queryfyai
+    grafana_dashboard: "1"
+data:
+  queryfyai-dashboard.json: |
+    {
+      "annotations": {
+        "list": []
+      },
+      "editable": true,
+      "fiscalYearStartMonth": 0,
+      "graphTooltip": 0,
+      "id": null,
+      "links": [],
+      "liveNow": false,
+      "panels": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "reqps"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 0
+          },
+          "id": 1,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(http_requests_total{service=\"queryfyai-backend\"}[5m]))",
+              "legendFormat": "Requests/sec"
+            }
+          ],
+          "title": "Request Rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.01
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 12,
+            "y": 0
+          },
+          "id": 2,
+          "options": {
+            "legend": {
+              "calcs": [],
+              "displayMode": "list",
+              "placement": "bottom"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(http_requests_total{service=\"queryfyai-backend\",status=~\"5..\"}[5m])) / sum(rate(http_requests_total{service=\"queryfyai-backend\"}[5m]))",
+              "legendFormat": "Error Rate"
+            }
+          ],
+          "title": "Error Rate",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "palette-classic"
+              },
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  }
+                ]
+              },
+              "unit": "s"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 8
+          },
+          "id": 3,
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket{service=\"queryfyai-backend\"}[5m])) by (le))",
+              "legendFormat": "p50"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{service=\"queryfyai-backend\"}[5m])) by (le))",
+              "legendFormat": "p95"
+            },
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket{service=\"queryfyai-backend\"}[5m])) by (le))",
+              "legendFormat": "p99"
+            }
+          ],
+          "title": "Response Latency",
+          "type": "timeseries"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.7
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.9
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 12,
+            "y": 8
+          },
+          "id": 4,
+          "targets": [
+            {
+              "expr": "sum(container_memory_working_set_bytes{container=\"backend\",pod=~\"queryfyai-backend.*\"}) / sum(container_spec_memory_limit_bytes{container=\"backend\",pod=~\"queryfyai-backend.*\"})",
+              "legendFormat": "Memory"
+            }
+          ],
+          "title": "Memory Usage",
+          "type": "gauge"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "fieldConfig": {
+            "defaults": {
+              "mappings": [],
+              "thresholds": {
+                "mode": "absolute",
+                "steps": [
+                  {
+                    "color": "green",
+                    "value": null
+                  },
+                  {
+                    "color": "yellow",
+                    "value": 0.7
+                  },
+                  {
+                    "color": "red",
+                    "value": 0.9
+                  }
+                ]
+              },
+              "unit": "percentunit"
+            }
+          },
+          "gridPos": {
+            "h": 8,
+            "w": 6,
+            "x": 18,
+            "y": 8
+          },
+          "id": 5,
+          "targets": [
+            {
+              "expr": "sum(rate(container_cpu_usage_seconds_total{container=\"backend\",pod=~\"queryfyai-backend.*\"}[5m])) / sum(container_spec_cpu_quota{container=\"backend\",pod=~\"queryfyai-backend.*\"} / 100000)",
+              "legendFormat": "CPU"
+            }
+          ],
+          "title": "CPU Usage",
+          "type": "gauge"
+        }
+      ],
+      "refresh": "30s",
+      "schemaVersion": 38,
+      "style": "dark",
+      "tags": ["queryfyai"],
+      "templating": {
+        "list": []
+      },
+      "time": {
+        "from": "now-1h",
+        "to": "now"
+      },
+      "timepicker": {},
+      "timezone": "",
+      "title": "QueryfyAI Dashboard",
+      "uid": "queryfyai-main",
+      "version": 1
+    }

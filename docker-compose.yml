@@ -1,0 +1,111 @@
+version: '3.8'
+
+# QueryfyAI Docker Compose Configuration
+# For local development and production-like environments
+
+services:
+  # ============================================================================
+  # BACKEND API
+  # ============================================================================
+  backend:
+    build: ./backend
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      # Application
+      - LOG_LEVEL=INFO
+      - DEBUG=false
+
+      # Database for state persistence (sessions, agent state)
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-queryfyai}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-queryfyai}
+
+      # Redis for caching and rate limiting
+      - REDIS_URL=redis://redis:6379/0
+      - CACHE_TYPE=auto
+
+      # Vector DB
+      - CHROMA_PERSIST_DIR=/app/data/chroma_db
+      - EMBEDDING_PROVIDER=local
+
+      # Rate limiting
+      - RATE_LIMIT_ENABLED=true
+      - RATE_LIMIT_DEFAULT=100/minute
+
+      # Workers (gunicorn)
+      - GUNICORN_WORKERS=4
+      - GUNICORN_TIMEOUT=300
+
+      # Security
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+    volumes:
+      - ./data:/app/data
+      - ./backend/app:/app/app:ro  # Hot reload in dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ============================================================================
+  # FRONTEND (Vue.js)
+  # ============================================================================
+  frontend:
+    build: ./frontend
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # ============================================================================
+  # POSTGRESQL - Session & State Persistence
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-queryfyai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-queryfyai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-queryfyai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ============================================================================
+  # REDIS - Caching & Rate Limiting
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local

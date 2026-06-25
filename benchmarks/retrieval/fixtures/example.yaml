@@ -1,0 +1,62 @@
+# ILLUSTRATIVE FIXTURE — table names are aspirational, not present
+# in the bundled demoapp seed. This file exists to show the YAML
+# *shape* and the *kind* of cases worth curating (abbreviated
+# columns, multi-table joins, business-domain terms). Running the
+# harness against the bundled docker-compose stack with this fixture
+# will yield recall=0 across the board.
+#
+# For the bundled stack, use `fixtures/demoapp.yaml` (matches the
+# actual seeded sessions / agent_state / query_history tables).
+# For your own schema, copy this file's shape and curate cases.
+#
+# Each case is a (question, expected_tables) pair. Matching is
+# case-insensitive and bare-vs-qualified equivalent — see
+# `_matches()` in harness.py.
+#
+# Cases curated here exercise the failure modes Tier B is supposed
+# to fix:
+#   - abbreviated columns (cust_id ↔ "customer id") → B1 hybrid retrieval
+#   - bare column dump pollution                     → B2 column-context fix
+#   - multi-table join intent                        → B4 column-level chunks
+
+fixture_name: example
+description: >
+  ILLUSTRATIVE shape only — table names below are not present in
+  the bundled demoapp seed. Use `fixtures/demoapp.yaml` against
+  the docker-compose dev stack, or copy this file's shape and
+  curate cases for your own schema.
+
+cases:
+  - question: "show me top 10 customers by revenue"
+    expected_tables: [customers, orders]
+
+  - question: "which policies expire this month"
+    expected_tables: [policies]
+    notes: insurance-domain term — exercises business-term lookup
+
+  - question: "claims approved in the last quarter"
+    expected_tables: [claims]
+
+  - question: "total premium collected per agent"
+    expected_tables: [agents, policies]
+
+  - question: "list all open tickets and their assignees"
+    expected_tables: [tickets, users]
+    notes: cross-domain join
+
+  - question: "average order value by month"
+    expected_tables: [orders]
+
+  - question: "customers who have never placed an order"
+    expected_tables: [customers, orders]
+    notes: LEFT JOIN intent
+
+  - question: "policies with expired coverage but no renewal"
+    expected_tables: [policies]
+
+  - question: "monthly active users in the last 90 days"
+    expected_tables: [users, sessions]
+    notes: time-window + cross-table
+
+  - question: "agents with the highest claim approval rate"
+    expected_tables: [agents, claims]

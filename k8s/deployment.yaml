@@ -1,0 +1,432 @@
+# ============================================================================
+# QueryfyAI - Kubernetes Backend Deployment Configuration
+# ============================================================================
+# Includes: Deployment, Service, HorizontalPodAutoscaler, ConfigMap
+# For production deployment supporting 1000+ concurrent users
+# ============================================================================
+
+---
+# ============================================================================
+# CONFIGMAP - Application Configuration
+# ============================================================================
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: queryfyai-config
+  labels:
+    app: queryfyai
+    component: backend
+data:
+  # Application settings
+  LOG_LEVEL: "INFO"
+  DEBUG: "false"
+
+  # Cache configuration
+  CACHE_TYPE: "redis"
+  CACHE_TTL_LLM: "3600"
+  CACHE_TTL_QUERY: "300"
+  CACHE_TTL_SCHEMA: "3600"
+
+  # Rate limiting
+  RATE_LIMIT_ENABLED: "true"
+  RATE_LIMIT_DEFAULT: "100/minute"
+  RATE_LIMIT_QUERY: "30/minute"
+
+  # Gunicorn settings
+  GUNICORN_WORKERS: "4"
+  GUNICORN_TIMEOUT: "300"
+  GUNICORN_KEEPALIVE: "5"
+  GUNICORN_MAX_REQUESTS: "1000"
+  GUNICORN_MAX_REQUESTS_JITTER: "100"
+
+  # Agent configuration
+  AGENT_MAX_RETRIES: "3"
+  AGENT_TIMEOUT: "120"
+
+  # Query execution limits
+  QUERY_MAX_ROWS: "10000"
+  QUERY_TIMEOUT: "60"
+
+  # OpenTelemetry (optional)
+  OTEL_EXPORTER_OTLP_ENDPOINT: ""
+  OTEL_SERVICE_NAME: "queryfyai-backend"
+
+---
+# ============================================================================
+# DEPLOYMENT - Backend API
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: queryfyai-backend
+  labels:
+    app: queryfyai
+    component: backend
+  annotations:
+    kubernetes.io/description: "QueryfyAI Backend API Service"
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: queryfyai
+      component: backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: queryfyai
+        component: backend
+        version: "latest"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: queryfyai-backend
+      terminationGracePeriodSeconds: 60
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+
+      # Init container to wait for dependencies
+      initContainers:
+      - name: wait-for-postgres
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -z postgres 5432; do echo waiting for postgres; sleep 2; done;']
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+
+      - name: wait-for-redis
+        image: busybox:1.36
+        command: ['sh', '-c', 'until nc -z redis 6379; do echo waiting for redis; sleep 2; done;']
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+              - ALL
+
+      containers:
+      - name: backend
+        image: queryfyai/backend:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+
+        # Environment from ConfigMap
+        envFrom:
+        - configMapRef:
+            name: queryfyai-config
+
+        # Secrets
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: queryfyai-secrets
+              key: database-url
+        - name: REDIS_URL
+          valueFrom:
+            secretKeyRef:
+              name: queryfyai-secrets
+              key: redis-url
+        - name: DEFAULT_LLM_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: queryfyai-secrets
+              key: llm-api-key
+              optional: true
+        - name: DEFAULT_LLM_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: queryfyai-secrets
+              key: llm-client-secret
+              optional: true
+        - name: SESSION_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: queryfyai-secrets
+              key: session-secret
+              optional: true
+
+        # Resource limits for production
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+            ephemeral-storage: "100Mi"
+          limits:
+            memory: "4Gi"
+            cpu: "4000m"
+            ephemeral-storage: "1Gi"
+
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health/live
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+          successThreshold: 1
+
+        readinessProbe:
+          httpGet:
+            path: /health/ready
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+          successThreshold: 1
+
+        startupProbe:
+          httpGet:
+            path: /health/live
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 30
+          successThreshold: 1
+
+        # Security context
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 1000
+          capabilities:
+            drop:
+              - ALL
+
+        # Volume mounts
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: chroma-data
+          mountPath: /app/data/chroma_db
+        - name: app-logs
+          mountPath: /app/logs
+
+      volumes:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 500Mi
+      - name: chroma-data
+        persistentVolumeClaim:
+          claimName: queryfyai-chroma-pvc
+      - name: app-logs
+        emptyDir:
+          sizeLimit: 100Mi
+
+      # Pod topology spread for high availability
+      topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app: queryfyai
+            component: backend
+
+      # Affinity rules - spread across nodes
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchLabels:
+                  app: queryfyai
+                  component: backend
+              topologyKey: kubernetes.io/hostname
+        # Prefer nodes with SSD storage
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 50
+            preference:
+              matchExpressions:
+              - key: node.kubernetes.io/instance-type
+                operator: In
+                values:
+                - m5.large
+                - m5.xlarge
+                - m6i.large
+                - m6i.xlarge
+
+---
+# ============================================================================
+# SERVICE - Backend API
+# ============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: queryfyai-backend
+  labels:
+    app: queryfyai
+    component: backend
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+spec:
+  type: ClusterIP
+  selector:
+    app: queryfyai
+    component: backend
+  ports:
+  - name: http
+    port: 8000
+    targetPort: http
+    protocol: TCP
+  sessionAffinity: None
+
+---
+# ============================================================================
+# HORIZONTAL POD AUTOSCALER
+# ============================================================================
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: queryfyai-backend-hpa
+  labels:
+    app: queryfyai
+    component: backend
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: queryfyai-backend
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+  # Scale based on CPU utilization
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  # Scale based on memory utilization
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+      - type: Percent
+        value: 10
+        periodSeconds: 60
+      - type: Pods
+        value: 1
+        periodSeconds: 60
+      selectPolicy: Min
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+      - type: Percent
+        value: 100
+        periodSeconds: 15
+      - type: Pods
+        value: 4
+        periodSeconds: 15
+      selectPolicy: Max
+
+---
+# ============================================================================
+# SERVICE ACCOUNT
+# ============================================================================
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: queryfyai-backend
+  labels:
+    app: queryfyai
+    component: backend
+automountServiceAccountToken: false
+
+---
+# ============================================================================
+# PERSISTENT VOLUME CLAIM - ChromaDB Storage
+# ============================================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: queryfyai-chroma-pvc
+  labels:
+    app: queryfyai
+    component: backend
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Gi
+  storageClassName: standard
+
+---
+# ============================================================================
+# POD DISRUPTION BUDGET - Ensure availability during updates
+# ============================================================================
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: queryfyai-backend-pdb
+  labels:
+    app: queryfyai
+    component: backend
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: queryfyai
+      component: backend
+
+---
+# ============================================================================
+# VERTICAL POD AUTOSCALER (Optional - requires VPA installed)
+# ============================================================================
+# apiVersion: autoscaling.k8s.io/v1
+# kind: VerticalPodAutoscaler
+# metadata:
+#   name: queryfyai-backend-vpa
+#   labels:
+#     app: queryfyai
+#     component: backend
+# spec:
+#   targetRef:
+#     apiVersion: apps/v1
+#     kind: Deployment
+#     name: queryfyai-backend
+#   updatePolicy:
+#     updateMode: "Auto"
+#   resourcePolicy:
+#     containerPolicies:
+#     - containerName: backend
+#       minAllowed:
+#         cpu: 250m
+#         memory: 256Mi
+#       maxAllowed:
+#         cpu: 8
+#         memory: 16Gi
+#       controlledResources: ["cpu", "memory"]

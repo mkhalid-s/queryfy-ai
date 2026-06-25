@@ -1,0 +1,74 @@
+# ============================================================================
+# QueryfyAI - Kustomize Configuration
+# ============================================================================
+# Usage:
+#   kubectl apply -k k8s/
+#
+# Or with a specific namespace:
+#   kubectl apply -k k8s/ -n queryfyai
+#
+# For specific environments:
+#   kubectl apply -k k8s/overlays/production
+#   kubectl apply -k k8s/overlays/staging
+# ============================================================================
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: queryfyai
+  annotations:
+    config.kubernetes.io/local-config: "true"
+
+# Namespace for all resources
+namespace: queryfyai
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/name: queryfyai
+  app.kubernetes.io/part-of: queryfyai
+  app.kubernetes.io/managed-by: kustomize
+  app.kubernetes.io/version: latest
+
+# Common annotations
+commonAnnotations:
+  app.kubernetes.io/description: "Natural Language to SQL Application"
+
+# Resources to include (order matters for dependencies)
+resources:
+  - namespace.yaml
+  - secrets.yaml
+  - postgresql.yaml
+  - redis.yaml
+  - deployment.yaml
+  - frontend.yaml
+  - ingress.yaml
+  - monitoring.yaml
+
+# Image customization (override in overlays)
+images:
+  - name: queryfyai/backend
+    newTag: latest
+  - name: queryfyai/frontend
+    newTag: latest
+
+# Replica count patches (adjust per environment)
+# replicas:
+#   - name: queryfyai-backend
+#     count: 3
+#   - name: queryfyai-frontend
+#     count: 2
+
+# ConfigMap generator (optional - for non-sensitive config)
+# configMapGenerator:
+#   - name: queryfyai-env-config
+#     literals:
+#       - LOG_LEVEL=INFO
+#       - DEBUG=false
+
+# Secret generator (for development only - use external secrets in production)
+# secretGenerator:
+#   - name: queryfyai-secrets
+#     type: Opaque
+#     literals:
+#       - database-url=postgresql://user:pass@host/db

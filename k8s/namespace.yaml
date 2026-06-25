@@ -1,0 +1,57 @@
+# ============================================================================
+# QueryfyAI - Kubernetes Namespace
+# ============================================================================
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: queryfyai
+  labels:
+    app.kubernetes.io/name: queryfyai
+    app.kubernetes.io/managed-by: kustomize
+  annotations:
+    # Resource quota annotations (optional)
+    # scheduler.alpha.kubernetes.io/node-selector: "node-type=queryfyai"
+
+---
+# ============================================================================
+# RESOURCE QUOTA - Limit namespace resource usage
+# ============================================================================
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: queryfyai-quota
+  namespace: queryfyai
+spec:
+  hard:
+    requests.cpu: "10"
+    requests.memory: "20Gi"
+    limits.cpu: "20"
+    limits.memory: "40Gi"
+    persistentvolumeclaims: "10"
+    pods: "50"
+
+---
+# ============================================================================
+# LIMIT RANGE - Default resource limits for pods
+# ============================================================================
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: queryfyai-limits
+  namespace: queryfyai
+spec:
+  limits:
+  - type: Container
+    default:
+      cpu: "500m"
+      memory: "512Mi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "128Mi"
+    max:
+      cpu: "4"
+      memory: "8Gi"
+    min:
+      cpu: "50m"
+      memory: "64Mi"

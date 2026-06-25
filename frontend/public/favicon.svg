@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- QueryfyAI Favicon: Clean, simple design for small sizes -->
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#00739d"/>
+      <stop offset="100%" style="stop-color:#038898"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded square -->
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="url(#bgGrad)"/>
+
+  <!-- Simple Q letter stylized as query/magnifier -->
+  <circle cx="15" cy="14" r="8" fill="none" stroke="white" stroke-width="3"/>
+  <path d="M20 19L26 25" stroke="white" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- AI sparkle -->
+  <circle cx="15" cy="14" r="2.5" fill="#ffc000"/>
+</svg>

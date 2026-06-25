@@ -1,0 +1,100 @@
+# ============================================================================
+# QueryfyAI - Analytics Databases Docker Compose (ClickHouse + Oracle XE)
+# ============================================================================
+# Usage:
+#   docker compose -f docker-compose.analytics.yml up -d
+#
+# Or with other compose files:
+#   docker compose -f docker-compose.dev.yml -f docker-compose.analytics.yml up -d
+#
+# Connection URLs:
+#   ClickHouse: http://localhost:8123 (HTTP) or localhost:9000 (Native)
+#   Oracle XE:  oracle://system:oracle123@localhost:1521/XEPDB1
+#
+# Note: Snowflake is cloud-only and cannot run locally in Docker.
+#       Consider using DuckDB for local Snowflake-like SQL analytics testing.
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # CLICKHOUSE - Column-oriented OLAP Database
+  # ============================================================================
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.1
+    container_name: queryfyai-clickhouse
+    ports:
+      - "8123:8123"    # HTTP interface
+      - "9000:9000"    # Native TCP interface
+      - "9009:9009"    # Interserver HTTP (for replication)
+    environment:
+      - CLICKHOUSE_DB=analytics_db
+      - CLICKHOUSE_USER=analytics_user
+      - CLICKHOUSE_PASSWORD=analytics_pass
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - clickhouse_logs:/var/log/clickhouse-server
+      - ./data/clickhouse-init:/docker-entrypoint-initdb.d:ro
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "--query", "SELECT 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - queryfyai-network
+
+  # ============================================================================
+  # ORACLE XE - Enterprise Database (Express Edition)
+  # ============================================================================
+  # Note: Oracle XE is resource-intensive. Allocate at least 2GB RAM to Docker.
+  # First startup takes 2-5 minutes as Oracle initializes the database.
+  # ============================================================================
+  oracle:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: queryfyai-oracle
+    ports:
+      - "1521:1521"    # Oracle listener
+      - "5500:5500"    # Enterprise Manager Express (optional)
+    environment:
+      - ORACLE_PASSWORD=oracle123
+      - ORACLE_DATABASE=TESTDB
+      - APP_USER=app_user
+      - APP_USER_PASSWORD=app_pass
+    volumes:
+      - oracle_data:/opt/oracle/oradata
+      - ./data/oracle-init:/container-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 300s  # Oracle takes time to initialize
+    restart: unless-stopped
+    networks:
+      - queryfyai-network
+
+# ============================================================================
+# NETWORKS
+# ============================================================================
+networks:
+  queryfyai-network:
+    driver: bridge
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+volumes:
+  clickhouse_data:
+    driver: local
+  clickhouse_logs:
+    driver: local
+  oracle_data:
+    driver: local

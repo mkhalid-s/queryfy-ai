@@ -1,0 +1,49 @@
+# Retrieval-quality fixture against the **actual seeded demoapp schema**.
+#
+# Tables present after `docker-compose up -d` finishes its first init:
+#   - sessions       (id, session_id, user_id, data, created_at, updated_at, expires_at)
+#   - agent_state    (id, session_id, conversation_id, state, context, created_at, updated_at)
+#   - query_history  (id, session_id, natural_language_query, generated_sql,
+#                     database_type, execution_time_ms, row_count, success,
+#                     error_message, created_at)
+#
+# See `scripts/init-db/01-init.sql` for the authoritative DDL. If you
+# change that file, refresh this fixture or recall scores drift.
+#
+# This fixture is small and operational by design — it's the "does the
+# harness wire end-to-end against the bundled stack" smoke test. For a
+# real measurement floor, point the harness at your production schema
+# with a curated fixture per the README guidance.
+
+fixture_name: demoapp
+description: >
+  Cases against the actual seeded demoapp tables (sessions, agent_state,
+  query_history). Lightweight end-to-end sanity for `python -m
+  benchmarks.retrieval.harness` against the docker-compose dev stack.
+
+cases:
+  - question: "list every active user session"
+    expected_tables: [sessions]
+
+  - question: "show the most recent natural-language queries"
+    expected_tables: [query_history]
+
+  - question: "which queries took the longest to execute"
+    expected_tables: [query_history]
+
+  - question: "agent state for a given conversation"
+    expected_tables: [agent_state]
+
+  - question: "session expiration times for cleanup"
+    expected_tables: [sessions]
+
+  - question: "queries that errored out in the last day"
+    expected_tables: [query_history]
+
+  - question: "sessions linked to a specific user id"
+    expected_tables: [sessions]
+    notes: exercises user_id column on sessions
+
+  - question: "conversation state and the session that owns it"
+    expected_tables: [agent_state, sessions]
+    notes: cross-table — exercises FK relationship

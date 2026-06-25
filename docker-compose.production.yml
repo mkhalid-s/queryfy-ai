@@ -1,0 +1,436 @@
+# ==========================================
+# QueryfyAI - Production Docker Compose
+# ==========================================
+# Production deployment with:
+# - TLS termination via Traefik
+# - PostgreSQL for session/state persistence
+# - Redis for caching and rate limiting
+# - Automated backups
+# - Security hardening
+#
+# Target: 10-500 concurrent users on on-premise servers
+#
+# Usage:
+#   docker-compose -f docker-compose.production.yml up -d
+#   docker-compose -f docker-compose.production.yml logs -f
+#   docker-compose -f docker-compose.production.yml down
+#
+# Prerequisites:
+#   - Copy .env.production.example to .env.production
+#   - Configure domain and SSL settings
+#   - Ensure ports 80, 443 are available
+# ==========================================
+
+services:
+  # ==========================================
+  # Traefik - Reverse Proxy & TLS Termination
+  # ==========================================
+  traefik:
+    image: traefik:v3.2
+    container_name: queryfy-traefik
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command:
+      # API and Dashboard
+      - --api.dashboard=true
+      - --api.insecure=false
+      # Entrypoints
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      # Redirect HTTP to HTTPS
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entryPoint.scheme=https
+      - --entrypoints.web.http.redirections.entrypoint.permanent=true
+      # TLS Configuration
+      - --entrypoints.websecure.http.tls=true
+      # Let's Encrypt (uncomment for automatic SSL)
+      # - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      # - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL:-admin@example.com}
+      # - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      # - --certificatesresolvers.letsencrypt.acme.caserver=https://acme-v02.api.letsencrypt.org/directory
+      # Docker provider
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=queryfy-public
+      # File provider for custom TLS certs
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      # Logging
+      - --log.level=INFO
+      - --accesslog=true
+      - --accesslog.bufferingsize=100
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik_letsencrypt:/letsencrypt
+      - ./traefik:/etc/traefik/dynamic:ro
+    networks:
+      - queryfy-public
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "traefik.enable=true"
+      # Dashboard (optional - secure with BasicAuth in production)
+      - "traefik.http.routers.traefik.rule=Host(`traefik.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.traefik.service=api@internal"
+      - "traefik.http.routers.traefik.entrypoints=websecure"
+      - "traefik.http.routers.traefik.middlewares=traefik-auth"
+      - "traefik.http.middlewares.traefik-auth.basicauth.users=${TRAEFIK_BASIC_AUTH:-}"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # Backend API Service
+  # ==========================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VERSION: ${VERSION:-latest}
+        VCS_REF: ${VCS_REF:-}
+    image: queryfy-backend:${VERSION:-latest}
+    container_name: queryfy-backend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    env_file:
+      - .env.production
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-queryfyai}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-queryfyai}
+      - REDIS_URL=redis://redis:6379/0
+      - CHROMA_PERSIST_DIR=/app/data/chroma_db
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DEBUG=false
+    volumes:
+      - chroma_data:/app/data
+      - backend_logs:/app/logs
+    networks:
+      - queryfy-public
+      - queryfy-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 90s
+    labels:
+      - "traefik.enable=true"
+      # API routing
+      - "traefik.http.routers.backend.rule=Host(`${API_DOMAIN:-api.localhost}`) || (Host(`${DOMAIN:-localhost}`) && PathPrefix(`/api`))"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.service=backend"
+      - "traefik.http.services.backend.loadbalancer.server.port=8000"
+      # Health check endpoint (strip prefix for /api routes)
+      - "traefik.http.routers.backend.middlewares=backend-stripprefix,backend-headers,rate-limit"
+      - "traefik.http.middlewares.backend-stripprefix.stripprefix.prefixes=/api"
+      # Security headers
+      - "traefik.http.middlewares.backend-headers.headers.customFrameOptionsValue=DENY"
+      - "traefik.http.middlewares.backend-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.backend-headers.headers.browserXssFilter=true"
+      - "traefik.http.middlewares.backend-headers.headers.referrerPolicy=strict-origin-when-cross-origin"
+      # Rate limiting
+      - "traefik.http.middlewares.rate-limit.ratelimit.average=100"
+      - "traefik.http.middlewares.rate-limit.ratelimit.burst=200"
+      - "traefik.http.middlewares.rate-limit.ratelimit.period=1m"
+      # Service metadata
+      - "service=queryfy-backend"
+      - "environment=production"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 8G
+        reservations:
+          cpus: '1.0'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ==========================================
+  # Frontend Service
+  # ==========================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+      args:
+        BUILD_DATE: ${BUILD_DATE:-}
+        VERSION: ${VERSION:-latest}
+        VCS_REF: ${VCS_REF:-}
+    image: queryfy-frontend:${VERSION:-latest}
+    container_name: queryfy-frontend
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - queryfy-public
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "traefik.enable=true"
+      # Frontend routing
+      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.service=frontend"
+      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
+      # Security headers
+      - "traefik.http.routers.frontend.middlewares=frontend-headers,frontend-compress"
+      - "traefik.http.middlewares.frontend-headers.headers.customFrameOptionsValue=SAMEORIGIN"
+      - "traefik.http.middlewares.frontend-headers.headers.contentTypeNosniff=true"
+      - "traefik.http.middlewares.frontend-headers.headers.browserXssFilter=true"
+      # Compression
+      - "traefik.http.middlewares.frontend-compress.compress=true"
+      # Service metadata
+      - "service=queryfy-frontend"
+      - "environment=production"
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # PostgreSQL - Database
+  # ==========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: queryfy-postgres
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-queryfyai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-queryfyai}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - queryfy-backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-queryfyai} -d ${POSTGRES_DB:-queryfyai}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+    labels:
+      - "service=queryfy-postgres"
+      - "environment=production"
+
+  # ==========================================
+  # Redis - Cache & Session Store
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: queryfy-redis
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy volatile-lru
+      --tcp-keepalive 300
+      --timeout 0
+      --tcp-backlog 511
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    volumes:
+      - redis_data:/data
+    networks:
+      - queryfy-backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 768M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      - "service=queryfy-redis"
+      - "environment=production"
+
+  # ==========================================
+  # Qdrant Vector Database (Optional - alternative to ChromaDB)
+  # ==========================================
+  # To use Qdrant instead of ChromaDB:
+  #   1. Set VECTOR_DB_TYPE=qdrant in .env.production
+  #   2. Start with: docker-compose -f docker-compose.production.yml --profile qdrant up -d
+  qdrant:
+    image: qdrant/qdrant:v1.12.1
+    container_name: queryfy-qdrant
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: "6334"
+      QDRANT__SERVICE__HTTP_PORT: "6333"
+      QDRANT__STORAGE__ON_DISK_PAYLOAD: "true"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - queryfy-backend
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:6333/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    profiles:
+      - qdrant
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+    labels:
+      - "service=queryfy-qdrant"
+      - "environment=production"
+
+  # ==========================================
+  # Backup Service (Optional)
+  # ==========================================
+  backup:
+    image: postgres:16-alpine
+    container_name: queryfy-backup
+    restart: "no"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-queryfyai}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      PGDATABASE: ${POSTGRES_DB:-queryfyai}
+    volumes:
+      - ./backups:/backups
+    networks:
+      - queryfy-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        pg_dump -Fc > /backups/queryfyai_$(date +%Y%m%d_%H%M%S).dump
+        # Keep only last 7 backups
+        ls -t /backups/*.dump 2>/dev/null | tail -n +8 | xargs -r rm
+        echo "Backup completed at $(date)"
+    profiles:
+      - backup
+    labels:
+      - "service=queryfy-backup"
+      - "environment=production"
+
+# ==========================================
+# Networks
+# ==========================================
+networks:
+  queryfy-public:
+    external: true
+    name: queryfy-public
+  queryfy-backend:
+    external: true
+    name: queryfy-backend
+
+# ==========================================
+# Volumes
+# ==========================================
+volumes:
+  traefik_letsencrypt:
+    driver: local
+    name: queryfy-traefik-letsencrypt
+  postgres_data:
+    driver: local
+    name: queryfy-postgres-data
+  redis_data:
+    driver: local
+    name: queryfy-redis-data
+  chroma_data:
+    driver: local
+    name: queryfy-chroma-data
+  qdrant_data:
+    driver: local
+    name: queryfy-qdrant-data
+  backend_logs:
+    driver: local
+    name: queryfy-backend-logs

@@ -1,0 +1,45 @@
+name: Pull Request Checks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: pr-${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  metadata:
+    name: PR Metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check PR title format
+        run: |
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          if ! echo "$PR_TITLE" | grep -qE '^(feat|fix|docs|chore|refactor|test|perf|ci|build|style)(\(.+\))?: .+'; then
+            echo "PR title should follow conventional commits format."
+            echo "Examples: feat: add new feature, fix(core): resolve bug"
+            exit 1
+          fi
+          echo "PR title format is valid."
+
+      - name: Check PR size
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          CHANGED_FILES=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" | wc -l)
+          ADDITIONS=$(git diff --shortstat "origin/${{ github.base_ref }}...HEAD" | grep -oE '[0-9]+ insertion' | awk '{print $1}' || echo 0)
+          DELETIONS=$(git diff --shortstat "origin/${{ github.base_ref }}...HEAD" | grep -oE '[0-9]+ deletion' | awk '{print $1}' || echo 0)
+          echo "Files changed: $CHANGED_FILES"
+          echo "Lines added: $ADDITIONS"
+          echo "Lines deleted: $DELETIONS"

@@ -1,0 +1,129 @@
+# QueryfyAI — Prometheus alerting rules (Phase 2 Day 7).
+#
+# Load via prometheus.yml:
+#   rule_files:
+#     - /etc/prometheus/queryfyai-alerts.yml
+#
+# Thresholds are conservative starting points. Tune after 1-2 weeks of
+# production data. Each rule references the metric name exported by
+# app/api/metrics.py so "what does this alert on?" is discoverable from
+# the code.
+
+groups:
+  - name: queryfyai-latency
+    interval: 30s
+    rules:
+      - alert: QueryfyAIHighP95Latency
+        expr: |
+          histogram_quantile(0.95,
+            rate(queryfyai_http_request_duration_seconds_bucket[5m])
+          ) > 8
+        for: 5m
+        labels:
+          severity: warning
+          service: queryfyai-backend
+        annotations:
+          summary: "p95 HTTP latency above 8s for 5m"
+          description: |
+            HTTP p95 latency has exceeded 8s for 5 minutes. Typical
+            culprits: slow LLM calls, data-lake query timeout ceiling
+            hit, or DB connection pool exhaustion. Check
+            /health/detailed and the active pool stats.
+
+      - alert: QueryfyAIHighErrorRate
+        expr: |
+          (sum(rate(queryfyai_http_requests_total{status=~"5.."}[5m]))
+           /
+           sum(rate(queryfyai_http_requests_total[5m]))
+          ) > 0.05
+        for: 3m
+        labels:
+          severity: critical
+          service: queryfyai-backend
+        annotations:
+          summary: "5xx error rate above 5% for 3m"
+          description: |
+            More than 5% of requests are returning 5xx for 3 minutes.
+            Check recent deploys, health-check status, and the tail of
+            the structured logs (correlation-id filter available).
+
+  - name: queryfyai-reliability-circuit
+    interval: 30s
+    rules:
+      - alert: QueryfyAICircuitBreakerTrippingFrequently
+        expr: |
+          increase(queryfyai_fix_event_total{fix_name="two_counter_circuit_breaker"}[15m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+          service: queryfyai-backend
+        annotations:
+          summary: "Two-counter circuit breaker tripped >10× in 15m"
+          description: |
+            The SQL-failure circuit breaker is tripping often. Likely
+            the LLM is generating bad SQL or a schema change broke
+            existing queries. Inspect recent failed_attempts and the
+            tool-node logs with the question correlation-id.
+
+      - alert: QueryfyAIDistributedLockFallback
+        expr: |
+          increase(queryfyai_fix_event_total{fix_name="distributed_lock_fail_loud"}[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: queryfyai-backend
+        annotations:
+          summary: "Distributed lock refused to fall back (Redis down in prod)"
+          description: |
+            The lock fail-loud guard triggered — Redis is unreachable
+            and DEVELOPMENT_MODE is false. Agent requests are being
+            rejected to preserve cross-worker safety. Restore Redis or
+            set DEVELOPMENT_MODE=true (NOT for production).
+
+      - alert: QueryfyAILockExtensionFailing
+        expr: |
+          increase(queryfyai_fix_event_total{fix_name="background_lock_extension_failure"}[10m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          service: queryfyai-backend
+        annotations:
+          summary: "Background lock extension failed — session lock lost"
+          description: |
+            The background lock extender observed extend() returning
+            False, meaning the lock was stolen or the TTL expired. In-
+            flight agent runs will surface an error to the user on the
+            next stream event.
+
+  - name: queryfyai-infrastructure
+    interval: 30s
+    rules:
+      - alert: QueryfyAIPoolPreflightFailures
+        expr: |
+          increase(queryfyai_fix_event_total{fix_name="pool_preflight_discarded"}[10m]) > 20
+        for: 5m
+        labels:
+          severity: warning
+          service: queryfyai-backend
+        annotations:
+          summary: "Pool preflight discarding >20 connections / 10m"
+          description: |
+            The asyncpg pool is replacing dead connections at an
+            unusually high rate — likely a flaky network path to the
+            DB or the DB itself is restarting. Check DB uptime and
+            connection-pool min/max sizing.
+
+      - alert: QueryfyAIShutdownDrainTimeouts
+        expr: |
+          increase(queryfyai_fix_event_total{fix_name="shutdown_drain_timeout"}[1h]) > 0
+        for: 0m
+        labels:
+          severity: warning
+          service: queryfyai-backend
+        annotations:
+          summary: "Shutdown drained with requests still in flight"
+          description: |
+            The 30s drain timeout fired with requests still executing.
+            Likely an SSE stream that didn't close, or a long data-lake
+            query that exceeded drain budget. Consider extending the
+            drain timeout or investigating the long-running request.

@@ -1,0 +1,98 @@
+# Core Framework
+fastapi>=0.109.2
+uvicorn[standard]>=0.27.1
+gunicorn>=26.0.0
+pydantic>=2.13.4
+pydantic-settings>=2.14.2
+python-multipart>=0.0.32
+
+# Async HTTP Client
+httpx>=0.26.0
+
+# Database Drivers - Core (Async)
+asyncpg>=0.29.0           # PostgreSQL async
+aiomysql>=0.2.0           # MySQL async
+motor>=3.7.1              # MongoDB async
+pymongo>=4.6.1            # MongoDB sync
+
+# Database Drivers - Enterprise (Optional - install as needed)
+# Uncomment the drivers you need for your data sources:
+
+# Cloud Data Warehouses
+# snowflake-connector-python>=3.6.0  # Snowflake
+# google-cloud-bigquery>=3.14.0      # Google BigQuery
+# databricks-sql-connector>=3.0.0     # Databricks SQL
+
+# AWS Data Services
+# psycopg2-binary>=2.9.9              # Redshift (PostgreSQL wire protocol)
+# pyathena>=3.3.0                      # AWS Athena (S3 queries)
+
+# Traditional Enterprise Databases
+# pyodbc>=5.0.1                        # SQL Server, Azure SQL
+# cx_Oracle>=8.3.0                     # Oracle Database
+# oracledb>=2.0.0                      # Oracle (newer driver)
+
+# Analytics & OLAP
+# trino>=0.327.0                       # Trino/Presto distributed SQL
+# clickhouse-connect>=0.7.0            # ClickHouse OLAP
+
+# Apache Ecosystem
+# pyhive>=0.7.0                        # Apache Hive
+# pyspark>=3.5.0                       # Apache Spark (Delta Lake, Iceberg)
+
+# NoSQL Databases
+cassandra-driver>=3.29.0              # Apache Cassandra (CQL)
+# Pin aioboto3 to specific version to avoid dependency resolution hell
+# aioboto3 15.5.0 -> aiobotocore[boto3] 2.25.1 -> boto3 1.41.33
+aioboto3==15.5.0                      # Async AWS SDK (includes boto3 via aiobotocore[boto3])
+
+# Vector Database & Embeddings
+chromadb>=0.4.22
+sentence-transformers>=2.2.2
+qdrant-client>=1.7.0  # Optional: for Qdrant support
+
+# Embedded Databases
+duckdb>=0.9.0                  # DuckDB - fast OLAP analytics
+
+# Session Management  
+redis>=5.0.1
+
+# Data Processing
+pandas>=2.2.0
+openpyxl>=3.1.2
+sqlalchemy>=2.0.51
+greenlet>=3.0.0               # Required by SQLAlchemy async
+alembic>=1.13.0               # Database migrations
+sqlparse>=0.4.4  # SQL parsing for analysis tools
+
+# Security
+urllib3>=2.6.0  # Pinned to fix CVE-2025-50182, CVE-2025-50181, CVE-2025-66418, CVE-2025-66471
+
+# Utilities
+python-dotenv==1.2.2
+tenacity==9.1.4
+
+# Structured Logging
+structlog>=25.5.0             # JSON/console logging with context binding
+
+# LLM Integration (Simple & Scalable)
+litellm>=1.40.0               # Unified LLM interface - all providers, one API
+langgraph>=1.2.6              # Agent workflows - scales with PostgreSQL state
+langgraph-checkpoint-postgres>=3.1.0  # PostgreSQL state for horizontal scaling
+psycopg[binary]>=3.3.4        # PostgreSQL driver with binary (required by langgraph)
+
+# Rate Limiting
+slowapi>=0.1.9                # Battle-tested rate limiting for FastAPI
+
+# ============== Observability ==============
+# OpenTelemetry - Distributed Tracing
+opentelemetry-api>=1.22.0
+opentelemetry-sdk>=1.42.1
+opentelemetry-exporter-otlp>=1.22.0
+opentelemetry-instrumentation-fastapi>=0.43b0
+opentelemetry-instrumentation-httpx>=0.62b1
+opentelemetry-instrumentation-redis>=0.43b0
+opentelemetry-instrumentation-logging>=0.43b0
+
+# Prometheus Metrics
+prometheus-client>=0.25.0

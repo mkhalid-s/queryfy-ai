@@ -1,0 +1,37 @@
+name: nightly
+description: Full BIRD Mini-Dev + MongoDB NL-to-Mongosh benchmark suite
+
+# LLM configuration — provider/model resolved from environment variables.
+# Supports all 15 providers configured in the app (openai, anthropic, azure,
+# bedrock, vertex_ai, gemini, groq, ollama, together, mistral, cohere,
+# replicate, deepseek, oauth_gateway, custom).
+#
+# Override via env vars:
+#   BENCHMARK_LLM_PROVIDER=anthropic
+#   BENCHMARK_LLM_MODEL=claude-sonnet-4-20250514
+#   ANTHROPIC_API_KEY=sk-ant-...
+llm:
+  provider: ${BENCHMARK_LLM_PROVIDER:-openai}
+  model: ${BENCHMARK_LLM_MODEL:-gpt-4o}
+  api_key_env: ${BENCHMARK_LLM_API_KEY_ENV:-OPENAI_API_KEY}
+  temperature: 0.0
+  max_tokens: 4096
+
+data_dir: benchmarks/data
+output_dir: benchmarks/results
+max_concurrent: 3
+generator_mode: direct
+
+suites:
+  - name: bird-mini-dev-full
+    dataset: bird-mini-dev
+    db_type: sql
+    metrics:
+      - exact_match
+      - execution_accuracy
+
+  - name: mongodb-full
+    dataset: mongodb-nl-to-mongosh
+    db_type: nosql_document
+    metrics:
+      - exact_match

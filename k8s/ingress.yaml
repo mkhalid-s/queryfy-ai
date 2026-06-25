@@ -1,0 +1,199 @@
+# ============================================================================
+# QueryfyAI - Kubernetes Ingress Configuration
+# ============================================================================
+# Supports: nginx-ingress, rate limiting, SSL/TLS, CORS
+# ============================================================================
+
+---
+# ============================================================================
+# INGRESS - API Gateway
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: queryfyai-ingress
+  labels:
+    app: queryfyai
+  annotations:
+    # Ingress class
+    kubernetes.io/ingress.class: nginx
+
+    # SSL/TLS Configuration
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+    # Timeouts for long-running queries
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+
+    # Request body size (for large schemas)
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+
+    # Rate limiting at ingress level
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-connections: "100"
+
+    # CORS Configuration
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization,X-CSRF-Token"
+    nginx.ingress.kubernetes.io/cors-max-age: "86400"
+
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+      add_header X-XSS-Protection "1; mode=block" always;
+      add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - api.queryfyai.com
+    secretName: queryfyai-tls-secret
+
+  rules:
+  - host: api.queryfyai.com
+    http:
+      paths:
+      # API routes
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: queryfyai-backend
+            port:
+              number: 8000
+
+---
+# ============================================================================
+# INGRESS - Frontend (Optional - if serving frontend from same cluster)
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: queryfyai-frontend-ingress
+  labels:
+    app: queryfyai
+    component: frontend
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+
+    # Frontend caching
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      add_header Cache-Control "public, max-age=31536000" always;
+      add_header X-Frame-Options "SAMEORIGIN" always;
+      add_header X-Content-Type-Options "nosniff" always;
+
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - queryfyai.com
+    - www.queryfyai.com
+    secretName: queryfyai-frontend-tls-secret
+
+  rules:
+  - host: queryfyai.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: queryfyai-frontend
+            port:
+              number: 80
+  - host: www.queryfyai.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: queryfyai-frontend
+            port:
+              number: 80
+
+---
+# ============================================================================
+# NETWORK POLICY - Restrict traffic between pods
+# ============================================================================
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: queryfyai-backend-network-policy
+  labels:
+    app: queryfyai
+    component: backend
+spec:
+  podSelector:
+    matchLabels:
+      app: queryfyai
+      component: backend
+  policyTypes:
+  - Ingress
+  - Egress
+
+  ingress:
+  # Allow traffic from ingress controller
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8000
+
+  # Allow traffic from frontend pods
+  - from:
+    - podSelector:
+        matchLabels:
+          app: queryfyai
+          component: frontend
+    ports:
+    - protocol: TCP
+      port: 8000
+
+  egress:
+  # Allow DNS
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: UDP
+      port: 53
+
+  # Allow PostgreSQL
+  - to:
+    - podSelector:
+        matchLabels:
+          app: postgresql
+    ports:
+    - protocol: TCP
+      port: 5432
+
+  # Allow Redis
+  - to:
+    - podSelector:
+        matchLabels:
+          app: redis
+    ports:
+    - protocol: TCP
+      port: 6379
+
+  # Allow external HTTPS (for LLM APIs)
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 10.0.0.0/8
+        - 172.16.0.0/12
+        - 192.168.0.0/16
+    ports:
+    - protocol: TCP
+      port: 443

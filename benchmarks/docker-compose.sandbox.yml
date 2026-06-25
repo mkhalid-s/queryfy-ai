@@ -1,0 +1,200 @@
+# ============================================================================
+# QueryfyAI - Benchmark Sandbox Environment
+# ============================================================================
+# Unified Docker Compose for running NL2SQL benchmarks against real databases.
+#
+# Databases included:
+#   - PostgreSQL 16     (port 15432) — BIRD data loaded via init scripts
+#   - MySQL 8.0         (port 13306) — BIRD data loaded via init scripts
+#   - MongoDB 7.0       (port 27018) — MongoDB NL-to-Mongosh benchmark data
+#   - Cassandra 4.1     (port 19042) — Banking CQL benchmark data
+#   - DynamoDB Local    (port 18000) — Logistics PartiQL benchmark data
+#   - SQLite            (file-based, no container needed)
+#
+# Usage:
+#   docker compose -f benchmarks/docker-compose.sandbox.yml up -d
+#   docker compose -f benchmarks/docker-compose.sandbox.yml ps
+#   python -m benchmarks run --config benchmarks/configs/cross-db.yaml
+#   docker compose -f benchmarks/docker-compose.sandbox.yml down -v
+#
+# Or use the convenience script:
+#   bash benchmarks/scripts/run-sandbox.sh
+# ============================================================================
+
+services:
+  # ==========================================================================
+  # POSTGRESQL 16 — Target for BIRD SQL transpiled from SQLite
+  # ==========================================================================
+  benchmark-postgres:
+    image: postgres:16-alpine
+    container_name: benchmark-postgres
+    ports:
+      - "15432:5432"
+    environment:
+      POSTGRES_USER: benchmark
+      POSTGRES_PASSWORD: benchmark123
+      POSTGRES_DB: benchmark_db
+    volumes:
+      - benchmark_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U benchmark -d benchmark_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - benchmark-network
+
+  # ==========================================================================
+  # MYSQL 8.0 — Target for BIRD SQL transpiled from SQLite
+  # ==========================================================================
+  benchmark-mysql:
+    image: mysql:8.0
+    container_name: benchmark-mysql
+    ports:
+      - "13306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: benchmark123
+      MYSQL_USER: benchmark
+      MYSQL_PASSWORD: benchmark123
+      MYSQL_DATABASE: benchmark_db
+    volumes:
+      - benchmark_mysql_data:/var/lib/mysql
+    command: >
+      --default-authentication-plugin=mysql_native_password
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "benchmark", "-pbenchmark123"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - benchmark-network
+
+  # ==========================================================================
+  # MONGODB 7.0 — Target for MongoDB NL-to-Mongosh benchmarks
+  # ==========================================================================
+  benchmark-mongodb:
+    image: mongo:7.0
+    container_name: benchmark-mongodb
+    ports:
+      - "27018:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: benchmark
+      MONGO_INITDB_ROOT_PASSWORD: benchmark123
+    volumes:
+      - benchmark_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "-u", "benchmark", "-p", "benchmark123", "--authenticationDatabase", "admin", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - benchmark-network
+
+  # ==========================================================================
+  # CASSANDRA 4.1 — Target for NL-to-CQL banking benchmarks
+  # ==========================================================================
+  benchmark-cassandra:
+    image: cassandra:4.1
+    container_name: benchmark-cassandra
+    ports:
+      - "19042:9042"
+    environment:
+      CASSANDRA_CLUSTER_NAME: benchmark_cluster
+      MAX_HEAP_SIZE: 512M
+      HEAP_NEWSIZE: 100M
+    volumes:
+      - benchmark_cassandra_data:/var/lib/cassandra
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -e 'DESC KEYSPACES' || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - benchmark-network
+
+  # ==========================================================================
+  # CASSANDRA INIT — Seeds banking tables after Cassandra is healthy
+  # ==========================================================================
+  benchmark-cassandra-init:
+    image: cassandra:4.1
+    container_name: benchmark-cassandra-init
+    depends_on:
+      benchmark-cassandra:
+        condition: service_healthy
+    environment:
+      CASSANDRA_HOST: benchmark-cassandra
+      CASSANDRA_PORT: "9042"
+    volumes:
+      - ../data/cassandra-init:/docker-entrypoint-initdb.d:ro
+    entrypoint: ["/bin/bash", "-ec", "export CASSANDRA_HOST=benchmark-cassandra && /docker-entrypoint-initdb.d/init-cassandra.sh"]
+    networks:
+      - benchmark-network
+
+  # ==========================================================================
+  # DYNAMODB LOCAL — Target for NL-to-PartiQL logistics benchmarks
+  # ==========================================================================
+  benchmark-dynamodb:
+    image: amazon/dynamodb-local:latest
+    container_name: benchmark-dynamodb
+    ports:
+      - "18000:8000"
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s -o /dev/null http://localhost:8000/ || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - benchmark-network
+
+  # ==========================================================================
+  # DYNAMODB INIT — Seeds logistics tables after DynamoDB is healthy
+  # ==========================================================================
+  benchmark-dynamodb-init:
+    image: amazon/aws-cli:latest
+    container_name: benchmark-dynamodb-init
+    depends_on:
+      benchmark-dynamodb:
+        condition: service_healthy
+    environment:
+      AWS_ACCESS_KEY_ID: fakeAccessKey
+      AWS_SECRET_ACCESS_KEY: fakeSecretKey
+      AWS_DEFAULT_REGION: us-east-1
+      ENDPOINT: http://benchmark-dynamodb:8000
+    volumes:
+      - ../data/dynamodb-init:/init:ro
+    entrypoint: ["/bin/sh", "-ec", "export ENDPOINT=http://benchmark-dynamodb:8000 && for f in /init/*.sh; do sh -e \"$$f\"; done"]
+    networks:
+      - benchmark-network
+
+# ============================================================================
+# NETWORKS
+# ============================================================================
+networks:
+  benchmark-network:
+    driver: bridge
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+volumes:
+  benchmark_pg_data:
+    driver: local
+  benchmark_mysql_data:
+    driver: local
+  benchmark_mongo_data:
+    driver: local
+  benchmark_cassandra_data:
+    driver: local

@@ -1,0 +1,193 @@
+# ============================================================================
+# QueryfyAI - Development Docker Compose with Qdrant + PostgreSQL
+# ============================================================================
+# Usage:
+#   docker compose -f docker-compose.dev.yml up -d
+#
+# Or with the main compose file:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # BACKEND API (Development Mode)
+  # ============================================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      # Application
+      - LOG_LEVEL=DEBUG
+      - DEBUG=true
+
+      # Database for state persistence (sessions, agent state)
+      - DATABASE_URL=postgresql://queryfyai:queryfyai_dev@postgres:5432/queryfyai
+
+      # Redis for caching and rate limiting
+      - REDIS_URL=redis://redis:6379/0
+      - CACHE_TYPE=redis
+
+      # Vector DB - Use Qdrant instead of ChromaDB
+      - VECTOR_DB_TYPE=qdrant
+      - QDRANT_URL=http://qdrant:6333
+      - EMBEDDING_PROVIDER=local
+
+      # Rate limiting (relaxed for development)
+      - RATE_LIMIT_ENABLED=true
+      - RATE_LIMIT_DEFAULT=1000/minute
+
+      # Workers (single worker for dev with reload)
+      - GUNICORN_WORKERS=1
+      - GUNICORN_TIMEOUT=600
+
+      # ================================================================
+      # LLM Configuration - OAuth Gateway (Enterprise Gateway)
+      # ================================================================
+      # Uncomment and configure these for your OAuth-based LLM gateway
+      # - DEFAULT_LLM_PROVIDER=oauth_gateway
+      # - DEFAULT_LLM_BASE_URL=https://your-ai-gateway.example.com
+      # - DEFAULT_LLM_TOKEN_URL=https://auth.example.com/oauth2/token
+      # - DEFAULT_LLM_CLIENT_ID=your-client-id
+      # - DEFAULT_LLM_CLIENT_SECRET=your-client-secret
+      # - DEFAULT_LLM_AUTH_SCOPE=api://your-scope/.default
+      # - DEFAULT_LLM_AUTH_TYPE=client_credentials
+      # - DEFAULT_LLM_TENANT=your-tenant-id
+      # - DEFAULT_LLM_CHAT_ENDPOINT=/v1/chat/completions
+      # - DEFAULT_LLM_MODEL=gpt-4
+
+      # ================================================================
+      # LLM Configuration - Direct API (OpenAI/Anthropic)
+      # ================================================================
+      # Alternative: Use direct API key instead of OAuth
+      # - DEFAULT_LLM_PROVIDER=openai
+      # - DEFAULT_LLM_API_KEY=replace_with_openai_api_key
+      # - DEFAULT_LLM_MODEL=gpt-4
+
+      # Security
+      - ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173,http://127.0.0.1:3000,http://127.0.0.1:5173
+
+    volumes:
+      - ./backend/app:/app/app:ro  # Mount code for hot reload
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    # Override CMD for development with auto-reload
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - queryfyai-network
+
+  # ============================================================================
+  # FRONTEND (Vue.js - Development Mode)
+  # ============================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - queryfyai-network
+
+  # ============================================================================
+  # POSTGRESQL - Session & State Persistence
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: queryfyai
+      POSTGRES_PASSWORD: queryfyai_dev
+      POSTGRES_DB: queryfyai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Optional: init scripts
+      # - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U queryfyai -d queryfyai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - queryfyai-network
+
+  # ============================================================================
+  # REDIS - Caching & Rate Limiting
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - queryfyai-network
+
+  # ============================================================================
+  # QDRANT - Vector Database
+  # ============================================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC API
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__LOG_LEVEL=INFO
+    volumes:
+      - qdrant_data:/qdrant/storage
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:6333/readyz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - queryfyai-network
+
+# ============================================================================
+# NETWORKS
+# ============================================================================
+networks:
+  queryfyai-network:
+    driver: bridge
+
+# ============================================================================
+# VOLUMES
+# ============================================================================
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  qdrant_data:
+    driver: local

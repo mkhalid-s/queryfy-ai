@@ -1,0 +1,172 @@
+# ==========================================
+# QueryfyAI - Monitoring Stack
+# ==========================================
+# Add monitoring services to production deployment
+#
+# Usage:
+#   docker-compose -f docker-compose.production.yml -f docker-compose.monitoring.yml up -d
+# ==========================================
+
+ 
+
+services:
+  # ==========================================
+  # Prometheus - Metrics Collection
+  # ==========================================
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: queryfy-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts:/etc/prometheus/alerts:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - queryfy-backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # Grafana - Visualization
+  # ==========================================
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: queryfy-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=https://${DOMAIN:-localhost}/grafana/
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    ports:
+      - "3001:3000"
+    networks:
+      - queryfy-backend
+      - queryfy-public
+    depends_on:
+      - prometheus
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.grafana.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/grafana`)"
+      - "traefik.http.routers.grafana.entrypoints=websecure"
+      - "traefik.http.routers.grafana.service=grafana"
+      - "traefik.http.services.grafana.loadbalancer.server.port=3000"
+      - "traefik.http.routers.grafana.middlewares=grafana-redirect,grafana-headers"
+      - "traefik.http.middlewares.grafana-redirect.redirectregex.regex=^https?://(.+)/grafana$"
+      - "traefik.http.middlewares.grafana-redirect.redirectregex.replacement=https://$1/grafana/"
+      - "traefik.http.middlewares.grafana-redirect.redirectregex.permanent=true"
+      - "traefik.http.middlewares.grafana-headers.headers.customrequestheaders.X-Forwarded-Prefix=/grafana"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==========================================
+  # Redis Exporter - Redis Metrics
+  # ==========================================
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.55.0
+    container_name: queryfy-redis-exporter
+    restart: unless-stopped
+    environment:
+      - REDIS_ADDR=redis://redis:6379
+    networks:
+      - queryfy-backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+
+  # ==========================================
+  # Node Exporter - Host Metrics
+  # ==========================================
+  node-exporter:
+    image: prom/node-exporter:v1.6.1
+    container_name: queryfy-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    networks:
+      - queryfy-backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+
+  # ==========================================
+  # Jaeger - Distributed Tracing
+  # ==========================================
+  jaeger:
+    image: jaegertracing/all-in-one:1.53
+    container_name: queryfy-jaeger
+    restart: unless-stopped
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - SPAN_STORAGE_TYPE=badger
+      - BADGER_EPHEMERAL=false
+      - BADGER_DIRECTORY_VALUE=/badger/data
+      - BADGER_DIRECTORY_KEY=/badger/key
+    user: "0"
+    volumes:
+      - jaeger_data:/badger
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC receiver
+      - "4318:4318"     # OTLP HTTP receiver
+    networks:
+      - queryfy-backend
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  prometheus_data:
+  grafana_data:
+  jaeger_data:
+
+networks:
+  queryfy-backend:
+    external: true
+  queryfy-public:
+    external: true

@@ -1,0 +1,171 @@
+# ==========================================
+# QueryfyAI - Prometheus Alert Rules
+# ==========================================
+
+groups:
+  - name: queryfyai
+    rules:
+      # Application Health
+      - alert: QueryfyAIDown
+        expr: up{job="queryfyai-backend"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "QueryfyAI backend is down"
+          description: "QueryfyAI backend has been down for more than 2 minutes."
+
+      # High Error Rate
+      - alert: HighErrorRate
+        expr: |
+          sum(rate(http_requests_total{job="queryfyai-backend", status=~"5.."}[5m]))
+          / sum(rate(http_requests_total{job="queryfyai-backend"}[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is above 5% for the last 5 minutes."
+
+      # High Response Time
+      - alert: HighResponseTime
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="queryfyai-backend"}[5m])) by (le)
+          ) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High response time detected"
+          description: "95th percentile response time is above 10 seconds."
+
+  - name: infrastructure
+    rules:
+      # Redis Down
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis instance has been down for more than 1 minute."
+
+      # High Memory Usage
+      - alert: HighMemoryUsage
+        expr: |
+          (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes)
+          / node_memory_MemTotal_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 85% for the last 5 minutes."
+
+      # High Disk Usage
+      - alert: HighDiskUsage
+        expr: |
+          (node_filesystem_size_bytes{fstype!~"tmpfs|overlay"} - node_filesystem_free_bytes)
+          / node_filesystem_size_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High disk usage"
+          description: "Disk usage is above 85%."
+
+      # High CPU Usage
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 80% for the last 5 minutes."
+
+  # ==========================================
+  # Tier A.5 — Observability alerts (Window 1)
+  # Counterparts to the Grafana panels added by A5/A6.
+  # ==========================================
+  - name: queryfyai_observability
+    rules:
+      # Result-cache hit rate cratered — A6 saw cache as "operational"
+      # post-merge but with no alert, a regression that stops the LLM
+      # from routing follow-ups through cache (e.g., a SYSTEM_PROMPT
+      # diet that drops the ROUTING RULE) would be invisible until
+      # someone glanced at the dashboard. Threshold: 20% (the typical
+      # baseline in dev is 40–60%; below 20% means the LLM is essentially
+      # re-running SQL on every follow-up).
+      - alert: ResultCacheHitRateLow
+        expr: |
+          (
+            sum(rate(queryfyai_result_cache_operations_total{result="hit"}[15m]))
+            /
+            clamp_min(
+              sum(rate(queryfyai_result_cache_operations_total{result=~"hit|miss"}[15m])),
+              0.0001
+            )
+          ) < 0.20
+          and
+          sum(rate(queryfyai_result_cache_operations_total{result=~"hit|miss"}[15m])) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+          tier: observability
+        annotations:
+          summary: "Result-cache hit rate below 20% for 15 min"
+          description: |
+            queryfyai_result_cache_operations_total hit-rate is {{ $value | humanizePercentage }}
+            over the last 15 minutes. Expected steady-state is 40–60%. Likely causes:
+            (1) Redis is unreachable and the in-memory fallback is evicting too aggressively;
+            (2) the LLM stopped routing follow-ups through cache tools (e.g., a prompt change
+            removed the routing rule); (3) TTL is too short for the current session length.
+            Check the A6 Grafana panel and `inspect_cached_result` / `get_cached_rows` recent
+            tool-call rate to disambiguate.
+
+      # Active sessions stuck high — F22 alarm equivalent: gauges that
+      # never decay indicate session leaks (logout/timeout path broken,
+      # background lock extension keeping refs alive, or Redis TTL miss).
+      # Threshold: >1000 sessions for 30 min. Tune per deployment.
+      - alert: ActiveSessionsStuckHigh
+        expr: queryfyai_active_sessions > 1000
+        for: 30m
+        labels:
+          severity: warning
+          tier: observability
+        annotations:
+          summary: "Active sessions > 1000 for 30 min"
+          description: |
+            Sessions gauge has been above 1000 for 30 minutes. Investigate session lifecycle:
+            (1) `session_store.delete()` path is firing on logout / TTL expiry;
+            (2) no orphaned background tasks are extending session locks past intended life;
+            (3) `_emit_active_sessions_metric` is reporting Redis truth (under multi-process,
+            verify `PROMETHEUS_MULTIPROC_DIR` is set and `livemax` aggregation works — see F20).
+
+      # MCP endpoint enabled but no traffic — soft signal that an
+      # operator flipped `MCP_ENDPOINT_ENABLED=true` but the consumer
+      # is not actually wired up. Useful during the staging soak window.
+      # Uses the dedicated `queryfyai_mcp_enabled` gauge (seeded from
+      # settings at startup) so the gate signal is real, not always-1.
+      - alert: MCPEndpointEnabledNoTraffic
+        expr: |
+          (
+            queryfyai_mcp_enabled == 1
+          ) and (
+            sum(rate(queryfyai_http_requests_total{endpoint=~"/api/v1/mcp.*"}[1h])) == 0
+          )
+        for: 4h
+        labels:
+          severity: info
+          tier: observability
+        annotations:
+          summary: "MCP endpoint configured but zero traffic for 4h"
+          description: |
+            MCP_ENDPOINT_ENABLED=true is set (queryfyai_mcp_enabled gauge = 1) but no
+            requests to /api/v1/mcp* in the last hour. Confirm the client (Claude Desktop
+            / Cursor / Vercel-AI-SDK) is actually configured. If unintentional, flip
+            MCP_ENDPOINT_ENABLED=false until a consumer is wired.

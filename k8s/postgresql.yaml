@@ -1,0 +1,143 @@
+# ============================================================================
+# QueryfyAI - PostgreSQL Deployment
+# ============================================================================
+# PostgreSQL for session state and agent state persistence
+# For production, consider using managed PostgreSQL (RDS, Cloud SQL, etc.)
+# ============================================================================
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgresql
+  labels:
+    app: postgresql
+    component: database
+spec:
+  serviceName: postgresql
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgresql
+      component: database
+  template:
+    metadata:
+      labels:
+        app: postgresql
+        component: database
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        fsGroup: 999
+
+      containers:
+      - name: postgresql
+        image: postgres:16-alpine
+        ports:
+        - containerPort: 5432
+          name: postgresql
+
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-secrets
+              key: username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-secrets
+              key: password
+        - name: POSTGRES_DB
+          value: "queryfyai"
+        - name: PGDATA
+          value: "/var/lib/postgresql/data/pgdata"
+
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - $(POSTGRES_USER)
+            - -d
+            - $(POSTGRES_DB)
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - $(POSTGRES_USER)
+            - -d
+            - $(POSTGRES_DB)
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+        securityContext:
+          allowPrivilegeEscalation: false
+
+        volumeMounts:
+        - name: postgresql-data
+          mountPath: /var/lib/postgresql/data
+
+  volumeClaimTemplates:
+  - metadata:
+      name: postgresql-data
+      labels:
+        app: postgresql
+        component: database
+    spec:
+      accessModes:
+        - ReadWriteOnce
+      resources:
+        requests:
+          storage: 20Gi
+      storageClassName: standard
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  labels:
+    app: postgresql
+    component: database
+spec:
+  type: ClusterIP
+  selector:
+    app: postgresql
+    component: database
+  ports:
+  - port: 5432
+    targetPort: 5432
+    name: postgresql
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgresql-secrets
+  labels:
+    app: postgresql
+    component: database
+type: Opaque
+stringData:
+  # IMPORTANT: Change these in production!
+  username: "queryfyai"
+  password: "CHANGE_ME_IN_PRODUCTION"

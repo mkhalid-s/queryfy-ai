@@ -1,0 +1,472 @@
+/**
+ * QueryfyAI Design Tokens
+ * 2025 UI Redesign - QueryfyAI Theme
+ *
+ * QueryfyAI Color Palette:
+ * - Trusted Blue (Primary): #00739d
+ * - Bright Sky: #1eb7df
+ * - Guiding Green: #26d1a0
+ * - Transformative Teal: #038898
+ * - Confident Gold: #ffc000
+ * - Creative Coral: #f15f5c
+ * - Solid Black: #0e191e
+ * - Proven Gray: #666666
+ */
+
+:root {
+  /* ========================================
+     COLOR PALETTE - QueryfyAI Brand
+     ======================================== */
+
+  /* Primary - Trusted Blue */
+  --color-primary: #00739d;
+  --color-primary-hover: #1eb7df;
+  --color-primary-light: rgba(0, 115, 157, 0.15);
+
+  /* Secondary - Transformative Teal */
+  --color-secondary: #038898;
+  --color-secondary-hover: #1eb7df;
+
+  /* Status Colors - QueryfyAI Palette */
+  --color-success: #26d1a0;
+  --color-success-hover: #1a9e7a;
+  --color-success-light: rgba(38, 209, 160, 0.15);
+  --color-warning: #ffc000;
+  --color-warning-hover: #d9a300;
+  --color-warning-light: rgba(255, 192, 0, 0.15);
+  --color-error: #f15f5c;
+  --color-error-hover: #d94a47;
+  --color-error-light: rgba(241, 95, 92, 0.15);
+  --color-info: #1eb7df;
+  --color-info-hover: #0a9bc7;
+  --color-info-light: rgba(30, 183, 223, 0.15);
+
+  /* Code Syntax Highlighting - Dark Theme */
+  --code-text: #e4e4e7;
+  --code-comment: #71717a;
+  --code-keyword: #1eb7df;
+  --code-string: #26d1a0;
+  --code-number: #ffc000;
+  --code-boolean: #f15f5c;
+  --code-null: #a1a1aa;
+  --code-property: #00739d;
+  --code-bracket: #a1a1aa;
+  --code-punctuation: #71717a;
+
+  /* Chart Colors - QueryfyAI Palette */
+  --chart-1: #00739d;
+  --chart-2: #038898;
+  --chart-3: #1eb7df;
+  --chart-4: #26d1a0;
+  --chart-5: #ffc000;
+  --chart-6: #f15f5c;
+
+  /* ========================================
+     DARK THEME (Default) - Solid Black
+     ======================================== */
+
+  /* Backgrounds */
+  --bg-app: #0e191e;
+  --bg-card: #162329;
+  --bg-input: rgba(0, 115, 157, 0.08);
+  --bg-hover: rgba(0, 115, 157, 0.12);
+  --bg-overlay: rgba(14, 25, 30, 0.9);
+
+  /* Text - Clean White */
+  --text-primary: #FFFFFF;
+  --text-secondary: rgba(255, 255, 255, 0.75);
+  --text-muted: rgba(255, 255, 255, 0.45);
+  --text-disabled: rgba(255, 255, 255, 0.25);
+
+  /* Borders */
+  --border-subtle: rgba(0, 115, 157, 0.15);
+  --border-default: rgba(0, 115, 157, 0.25);
+  --border-focus: #1eb7df;
+
+  /* Shadows - Layered depth for spatial UI */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5), 0 4px 10px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 25px rgba(0, 115, 157, 0.3);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+  --shadow-floating: 0 8px 32px rgba(0, 0, 0, 0.5), 0 4px 12px rgba(0, 0, 0, 0.4);
+
+  /* ========================================
+     SPACING SCALE
+     ======================================== */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+
+  /* ========================================
+     BORDER RADIUS
+     ======================================== */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* ========================================
+     TYPOGRAPHY
+     ======================================== */
+
+  /* Font Families */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
+
+  /* Font Sizes */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 17px;
+  --text-xl: 20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+
+  /* Line Heights */
+  --leading-tight: 1.25;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.75;
+
+  /* Font Weights */
+  --font-normal: 400;
+  --font-medium: 500;
+  --font-semibold: 600;
+  --font-bold: 700;
+
+  /* ========================================
+     TRANSITIONS
+     ======================================== */
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+  --transition-slow: 300ms ease;
+  --transition-spring: 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  --transition-smooth: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ========================================
+     Z-INDEX SCALE
+     ======================================== */
+  --z-base: 0;
+  --z-dropdown: 100;
+  --z-sticky: 200;
+  --z-overlay: 500;
+  --z-modal: 1000;
+  --z-toast: 2000;
+
+  /* ========================================
+     LAYOUT
+     ======================================== */
+  --header-height: 60px;
+  --input-bar-height: 80px;
+  --max-content-width: 900px;
+  --drawer-width: 400px;
+
+  /* Sidebar */
+  --sidebar-width: 280px;
+  --sidebar-collapsed-width: 48px;
+  --sidebar-transition: 0.3s ease;
+}
+
+/* ========================================
+   QUERYFYAI LIGHT THEME (WCAG AA Compliant)
+   ======================================== */
+.queryfy-light-theme,
+[data-theme="queryfy-light"] {
+  /* Primary - Trusted Blue */
+  --color-primary: #00739d;
+  --color-primary-hover: #038898;
+  --color-primary-light: rgba(0, 115, 157, 0.12);
+
+  /* Secondary - Transformative Teal */
+  --color-secondary: #038898;
+  --color-secondary-hover: #00739d;
+
+  /* Status Colors - Darker variants for light theme contrast */
+  --color-success: #1a9e7a;
+  --color-success-hover: #158a6a;
+  --color-success-light: rgba(38, 209, 160, 0.12);
+  --color-warning: #d9a300;
+  --color-warning-hover: #b88a00;
+  --color-warning-light: rgba(255, 192, 0, 0.12);
+  --color-error: #d94a47;
+  --color-error-hover: #c43c39;
+  --color-error-light: rgba(241, 95, 92, 0.12);
+  --color-info: #0a9bc7;
+  --color-info-hover: #0889b3;
+  --color-info-light: rgba(30, 183, 223, 0.12);
+
+  /* Code Syntax Highlighting - Light Theme */
+  --code-text: #0e191e;
+  --code-comment: #666666;
+  --code-keyword: #00739d;
+  --code-string: #1a9e7a;
+  --code-number: #d9a300;
+  --code-boolean: #d94a47;
+  --code-null: #666666;
+  --code-property: #038898;
+  --code-bracket: #666666;
+  --code-punctuation: #666666;
+
+  /* Chart Colors - QueryfyAI Palette */
+  --chart-1: #00739d;
+  --chart-2: #038898;
+  --chart-3: #0a9bc7;
+  --chart-4: #1a9e7a;
+  --chart-5: #d9a300;
+  --chart-6: #d94a47;
+
+  /* Backgrounds - 10% Trusted Blue / 10% Proven Gray */
+  --bg-app: #e7f1f5;
+  --bg-card: #FFFFFF;
+  --bg-input: #efefef;
+  --bg-hover: rgba(0, 115, 157, 0.08);
+  --bg-overlay: rgba(14, 25, 30, 0.6);
+
+  /* Text - Solid Black / Proven Gray */
+  --text-primary: #0e191e;
+  --text-secondary: #333333;
+  --text-muted: #666666;
+  --text-disabled: #999999;
+
+  /* Borders - QueryfyAI palette */
+  --border-subtle: rgba(0, 115, 157, 0.15);
+  --border-default: rgba(0, 115, 157, 0.25);
+  --border-focus: #00739d;
+
+  /* Shadows - Cool tint with layered depth */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1), 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.12), 0 4px 10px rgba(0, 0, 0, 0.06);
+  --shadow-glow: 0 0 20px rgba(0, 115, 157, 0.2);
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04);
+  --shadow-elevated: 0 4px 16px rgba(0, 0, 0, 0.1), 0 2px 6px rgba(0, 0, 0, 0.05);
+  --shadow-floating: 0 8px 32px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* ========================================
+   RESPONSIVE BREAKPOINTS
+   ======================================== */
+
+/* Tablet landscape and below */
+@media (max-width: 1200px) {
+  :root {
+    --drawer-width: 360px;
+  }
+}
+
+/* Tablet portrait and below */
+@media (max-width: 992px) {
+  :root {
+    --header-height: 56px;
+    --drawer-width: 100%;
+  }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  :root {
+    --header-height: 52px;
+    --input-bar-height: 70px;
+    --space-md: 12px;
+    --space-lg: 20px;
+    --text-base: 14px;
+    --text-lg: 16px;
+  }
+}
+
+/* Small mobile */
+@media (max-width: 480px) {
+  :root {
+    --space-md: 10px;
+    --space-lg: 16px;
+    --radius-lg: 12px;
+  }
+}
+
+/* ========================================
+   SAFE AREA SUPPORT (iOS)
+   ======================================== */
+@supports (padding: env(safe-area-inset-bottom)) {
+  :root {
+    --safe-area-top: env(safe-area-inset-top);
+    --safe-area-bottom: env(safe-area-inset-bottom);
+    --safe-area-left: env(safe-area-inset-left);
+    --safe-area-right: env(safe-area-inset-right);
+  }
+}
+
+/* ========================================
+   GLOBAL RESET & BASE STYLES
+   ======================================== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: var(--leading-normal);
+  color: var(--text-primary);
+  background: var(--bg-app);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Prevent iOS zoom on input focus */
+@media (max-width: 768px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Hide scrollbar but keep scroll functionality */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+/* Firefox - hide scrollbar */
+* {
+  scrollbar-width: none;
+}
+
+/* For IE/Edge */
+* {
+  -ms-overflow-style: none;
+}
+
+/* Selection */
+::selection {
+  background: rgba(0, 115, 157, 0.3);
+  color: var(--text-primary);
+}
+
+/* Focus styles */
+:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Remove default button styles */
+button {
+  font-family: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+/* Remove default input styles */
+input,
+select,
+textarea {
+  font-family: inherit;
+  border: none;
+  background: none;
+  outline: none;
+}
+
+/* Links */
+a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+/* Code */
+code,
+pre {
+  font-family: var(--font-mono);
+}
+
+/* ========================================
+   UTILITY CLASSES
+   ======================================== */
+
+/* Visually hidden but accessible */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Truncate text */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Spin animation */
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Pulse animation */
+.pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Fade in animation */
+.fade-in {
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Slide up animation */
+.slide-up {
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

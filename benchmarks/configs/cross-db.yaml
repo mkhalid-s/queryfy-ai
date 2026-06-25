@@ -1,0 +1,99 @@
+name: cross-db
+description: >
+  Cross-database benchmark — runs all 6 database types:
+  SQLite (native BIRD), PostgreSQL, MySQL (cross-dialect),
+  MongoDB (NL-to-Mongosh), Cassandra (NL-to-CQL), DynamoDB (NL-to-PartiQL).
+  Requires docker-compose.sandbox.yml to be running.
+
+# LLM configuration — provider/model resolved from environment variables.
+# Supports all 15 providers configured in the app.
+llm:
+  provider: ${BENCHMARK_LLM_PROVIDER:-openai}
+  model: ${BENCHMARK_LLM_MODEL:-gpt-4o-mini}
+  api_key_env: ${BENCHMARK_LLM_API_KEY_ENV:-OPENAI_API_KEY}
+  temperature: 0.0
+  max_tokens: 2048
+
+data_dir: benchmarks/data
+output_dir: benchmarks/results
+max_concurrent: 2
+generator_mode: direct
+
+suites:
+  # ------------------------------------------------------------------
+  # SQL — BIRD Mini-Dev on SQLite (baseline)
+  # ------------------------------------------------------------------
+  - name: bird-sqlite
+    dataset: bird-mini-dev
+    db_type: sql
+    max_cases: 20
+    metrics:
+      - exact_match
+      - execution_accuracy
+    tags: [cross-db, sqlite, baseline]
+
+  # ------------------------------------------------------------------
+  # SQL — BIRD Mini-Dev on PostgreSQL (cross-dialect)
+  # ------------------------------------------------------------------
+  - name: bird-postgresql
+    dataset: bird-mini-dev
+    db_type: postgresql
+    max_cases: 20
+    transpile_from: sqlite
+    connection_url: ${BENCHMARK_PG_URL:-postgresql://benchmark:benchmark123@localhost:15432/benchmark_db}
+    metrics:
+      - exact_match
+      - dialect_accuracy
+      - execution_accuracy
+    tags: [cross-db, postgresql, cross-dialect]
+
+  # ------------------------------------------------------------------
+  # SQL — BIRD Mini-Dev on MySQL (cross-dialect)
+  # ------------------------------------------------------------------
+  - name: bird-mysql
+    dataset: bird-mini-dev
+    db_type: mysql
+    max_cases: 20
+    transpile_from: sqlite
+    connection_url: ${BENCHMARK_MYSQL_URL:-mysql://benchmark:benchmark123@localhost:13306/benchmark_db}
+    metrics:
+      - exact_match
+      - dialect_accuracy
+      - execution_accuracy
+    tags: [cross-db, mysql, cross-dialect]
+
+  # ------------------------------------------------------------------
+  # NoSQL — MongoDB NL-to-Mongosh
+  # ------------------------------------------------------------------
+  - name: mongodb-mongosh
+    dataset: mongodb-nl-to-mongosh
+    db_type: nosql_document
+    max_cases: 10
+    connection_url: ${BENCHMARK_MONGO_URL:-mongodb://benchmark:benchmark123@localhost:27018/}
+    metrics:
+      - exact_match
+    tags: [cross-db, mongodb, nosql]
+
+  # ------------------------------------------------------------------
+  # NoSQL — Cassandra NL-to-CQL (banking)
+  # ------------------------------------------------------------------
+  - name: cassandra-banking
+    dataset: cassandra-banking
+    db_type: nosql_wide_column
+    max_cases: 25
+    connection_url: ${BENCHMARK_CASSANDRA_URL:-cassandra://localhost:19042/banking_db}
+    metrics:
+      - exact_match
+    tags: [cross-db, cassandra, nosql]
+
+  # ------------------------------------------------------------------
+  # NoSQL — DynamoDB NL-to-PartiQL (logistics)
+  # ------------------------------------------------------------------
+  - name: dynamodb-logistics
+    dataset: dynamodb-logistics
+    db_type: nosql_key_value
+    max_cases: 25
+    connection_url: ${BENCHMARK_DYNAMODB_URL:-dynamodb://fakeAccessKey:fakeSecretKey@localhost:18000}
+    metrics:
+      - exact_match
+    tags: [cross-db, dynamodb, nosql]

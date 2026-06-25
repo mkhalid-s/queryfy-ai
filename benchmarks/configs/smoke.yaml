@@ -1,0 +1,52 @@
+name: smoke
+description: Quick smoke test for PR validation (10 cases per suite)
+
+# LLM configuration — provider/model resolved from environment variables.
+# Supports all 15 providers configured in the app (openai, anthropic, azure,
+# bedrock, vertex_ai, gemini, groq, ollama, together, mistral, cohere,
+# replicate, deepseek, oauth_gateway, custom).
+#
+# Override via env vars:
+#   BENCHMARK_LLM_PROVIDER=openai
+#   BENCHMARK_LLM_MODEL=gpt-4o-mini
+#   OPENAI_API_KEY=sk-...
+llm:
+  provider: ${BENCHMARK_LLM_PROVIDER:-openai}
+  model: ${BENCHMARK_LLM_MODEL:-gpt-4o-mini}
+  api_key_env: ${BENCHMARK_LLM_API_KEY_ENV:-OPENAI_API_KEY}
+  temperature: 0.0
+  max_tokens: 2048
+  # --- Provider-specific fields (uncomment as needed) ---
+  # base_url: https://my-azure-endpoint.openai.azure.com  # azure, ollama, custom
+  # --- OAuth Gateway fields ---
+  # token_url: https://login.example.com/oauth2/token
+  # client_id: my-client-id
+  # client_secret_env: OAUTH_CLIENT_SECRET
+  # auth_scope: api://my-scope/.default
+  # auth_type: client_credentials
+  # tenant: my-tenant
+  # chat_endpoint: /v1/chat/completions
+  # --- Complexity routing ---
+  # fast_model: gpt-4o-mini
+  # enable_complexity_routing: false
+
+data_dir: benchmarks/data
+output_dir: benchmarks/results
+max_concurrent: 2
+generator_mode: direct
+
+suites:
+  - name: bird-smoke
+    dataset: bird-mini-dev
+    db_type: sql
+    max_cases: 10
+    metrics:
+      - exact_match
+      - execution_accuracy
+
+  - name: mongodb-smoke
+    dataset: mongodb-nl-to-mongosh
+    db_type: nosql_document
+    max_cases: 10
+    metrics:
+      - exact_match
