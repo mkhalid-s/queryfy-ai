@@ -48,7 +48,7 @@ aioboto3==15.5.0                      # Async AWS SDK (includes boto3 via aiobot
 
 # Vector Database & Embeddings
 chromadb>=0.4.22
-sentence-transformers>=2.2.2
+sentence-transformers>=5.6.0
 qdrant-client>=1.7.0  # Optional: for Qdrant support
 
 # Embedded Databases
