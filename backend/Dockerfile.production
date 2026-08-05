@@ -10,31 +10,6 @@ ARG BUILD_DATE
 ARG VERSION=latest
 ARG VCS_REF
 
-# ==========================================
-# Stage 1: Dependencies builder
-# ==========================================
-FROM python:3.12-slim AS builder
-
-WORKDIR /build
-
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    g++ \
-    libpq-dev \
-    libffi-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy and install requirements.
-# Build wheels for the full transitive dependency closure (no --no-deps),
-# so the runtime stage can install with --no-index against the wheelhouse
-# without a PyPI fallback for unpinned transitive deps.
-COPY requirements.txt .
-RUN pip wheel --no-cache-dir --wheel-dir /build/wheels -r requirements.txt
-
-# ==========================================
-# Stage 2: Production runtime
-# ==========================================
 FROM python:3.12-slim AS production
 
 # Build arguments for labels
@@ -58,8 +33,12 @@ RUN groupadd -r -g 1000 appgroup && \
 
 WORKDIR /app
 
-# Install runtime dependencies only (minimal footprint)
+# Install runtime and build dependencies needed by packages without wheels.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    libpq-dev \
+    libffi-dev \
     libpq5 \
     curl \
     ca-certificates \
@@ -68,17 +47,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && apt-get autoremove -y
 
-# Copy wheels from builder and install.
-# --find-links lets pip use the wheelhouse as a wheel source while being
-# guided by requirements.txt version constraints (avoids the
-# ResolutionImpossible from passing every /wheels/* file as a peer
-# candidate). --no-index forbids PyPI fallback so a missing wheel fails
-# the build loudly here instead of silently producing an image with a
-# PyPI-fetched dep the wheelhouse step was supposed to vet.
-COPY --from=builder /build/wheels /wheels
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install --no-cache-dir --no-index --find-links /wheels -r /tmp/requirements.txt \
-    && rm -rf /wheels /tmp/requirements.txt
+RUN pip install --no-cache-dir --prefer-binary \
+        --index-url https://download.pytorch.org/whl/cpu \
+        --trusted-host download.pytorch.org \
+        --trusted-host download-r2.pytorch.org \
+        "torch>=2.2,<3" \
+    && pip install --no-cache-dir --prefer-binary -r /tmp/requirements.txt \
+    && rm -rf /tmp/requirements.txt
 
 # Copy application code
 COPY --chown=appuser:appgroup . .
