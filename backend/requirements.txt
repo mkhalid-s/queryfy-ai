@@ -48,7 +48,7 @@ aioboto3==15.5.0                      # Async AWS SDK (includes boto3 via aiobot
 
 # Vector Database & Embeddings
 chromadb>=0.4.22
-sentence-transformers>=2.2.2
+sentence-transformers>=5.6.0
 qdrant-client>=1.7.0  # Optional: for Qdrant support
 
 # Embedded Databases
@@ -73,7 +73,7 @@ python-dotenv==1.2.2
 tenacity==9.1.4
 
 # Structured Logging
-structlog>=25.5.0             # JSON/console logging with context binding
+structlog>=26.1.0             # JSON/console logging with context binding
 
 # LLM Integration (Simple & Scalable)
 litellm>=1.40.0               # Unified LLM interface - all providers, one API
