@@ -16,7 +16,7 @@
   "dependencies": {
     "@iconify/vue": "^5.0.1",
     "axios": "^1.13.5",
-    "dompurify": "^3.4.12",
+    "dompurify": "^3.4.13",
     "echarts": "^6.0.0",
     "lucide-vue-next": "^1.0.0",
     "mitt": "^3.0.1",
