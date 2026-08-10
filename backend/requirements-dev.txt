@@ -23,4 +23,4 @@ ruff>=0.15.12
 # yaml is currently a transitive dep of chromadb/langgraph, but listing
 # explicitly so the harness's fixture loader doesn't break on a future
 # minor bump that drops the indirect dependency.
-pyyaml>=6.0
+pyyaml>=6.0.3
