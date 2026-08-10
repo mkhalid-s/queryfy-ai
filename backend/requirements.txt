@@ -78,7 +78,7 @@ structlog>=26.1.0             # JSON/console logging with context binding
 # LLM Integration (Simple & Scalable)
 litellm>=1.40.0               # Unified LLM interface - all providers, one API
 langgraph>=1.2.6              # Agent workflows - scales with PostgreSQL state
-langgraph-checkpoint-postgres>=3.1.0  # PostgreSQL state for horizontal scaling
+langgraph-checkpoint-postgres>=3.1.1  # PostgreSQL state for horizontal scaling
 psycopg[binary]>=3.3.4        # PostgreSQL driver with binary (required by langgraph)
 
 # Rate Limiting
