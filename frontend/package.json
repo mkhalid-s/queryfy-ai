@@ -17,7 +17,7 @@
     "@iconify/vue": "^5.0.1",
     "axios": "^1.13.5",
     "echarts": "^6.1.0",
-    "dompurify": "^3.4.12",
+    "dompurify": "^3.4.13",
     "lucide-vue-next": "^1.0.0",
     "mitt": "^3.0.1",
     "pinia": "^3.0.4",
