@@ -62,7 +62,7 @@ pandas>=2.2.0
 openpyxl>=3.1.2
 sqlalchemy>=2.0.51
 greenlet>=3.0.0               # Required by SQLAlchemy async
-alembic>=1.13.0               # Database migrations
+alembic>=1.19.0               # Database migrations
 sqlparse>=0.4.4  # SQL parsing for analysis tools
 
 # Security
