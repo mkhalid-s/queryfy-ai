@@ -4,7 +4,7 @@
 # ============================================================================
 # BUILDER STAGE - Install dependencies
 # ============================================================================
-FROM python:3.12-slim as builder
+FROM python:3.14-slim as builder
 
 WORKDIR /app
 
@@ -26,7 +26,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # ============================================================================
 # PRODUCTION STAGE - Slim runtime image
 # ============================================================================
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Security: Create non-root user
 RUN groupadd -r queryfyai && useradd -r -g queryfyai queryfyai
